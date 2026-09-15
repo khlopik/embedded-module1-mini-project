@@ -17,162 +17,176 @@
 #define ZERO_BRIGHTNESS_THRESHOLD 50
 
 template <typename T, std::size_t N>
-constexpr std::size_t arraySize(const T (&)[N]) noexcept {
+constexpr std::size_t arraySize(const T (&)[N]) noexcept
+{
   return N;
 }
 
 namespace UserData
 {
-  enum sourceMode {
+  enum sourceMode
+  {
     pot,
     ldr,
   };
 
-  enum showMode {
+  enum showMode
+  {
     level,
     brightness,
     animation,
   };
 
-  struct LedState {
-    bool isOn { false };
-    uint8_t brightness { 255 };
+  struct LedState
+  {
+    bool isOn{false};
+    uint8_t brightness{255};
 
     LedState() = default;
     LedState(bool on, uint8_t brightness)
-      : isOn(on), brightness(brightness)
-      {}
+        : isOn(on), brightness(brightness)
+    {
+    }
   };
 
-
-  LedState blue[] {
-    { true, 255 },
-    { false, 255 },
+  LedState blue[]{
+      {true, 255},
+      {false, 255},
   };
 
-  LedState green[] {
-    { false, 255 },
-    { false, 255 },
-    { false, 255 },
-    { false, 255 },
-    { false, 255 },
+  LedState green[]{
+      {false, 255},
+      {false, 255},
+      {false, 255},
+      {false, 255},
+      {false, 255},
   };
 
-  struct AnimationStep {
+  struct AnimationStep
+  {
     uint32_t timestamp;
     uint8_t brightness;
     bool transition;
   };
 
-  class LedAnimation {
-    private:
-      const AnimationStep* m_steps;
-      uint8_t m_totalSteps;
-      uint8_t m_currentStep { 0 };
-      LedState& m_ledState;
+  class LedAnimation
+  {
+  private:
+    const AnimationStep *m_steps;
+    uint8_t m_totalSteps;
+    uint8_t m_currentStep{0};
+    LedState &m_ledState;
 
-      uint32_t m_startTime { 0 };
-      uint32_t m_duration;
-      uint32_t m_previousDiffTime { 0 };
+    uint32_t m_startTime{0};
+    uint32_t m_duration;
+    uint32_t m_previousDiffTime{0};
 
-      const AnimationStep& getCurrentStep() const {
-        return m_steps[m_currentStep];
-      }
+    const AnimationStep &getCurrentStep() const
+    {
+      return m_steps[m_currentStep];
+    }
 
-      const AnimationStep& getNextStep() const {
-        return m_steps[m_currentStep >= m_totalSteps - 1 ? 0 : m_currentStep + 1];
-      }
+    const AnimationStep &getNextStep() const
+    {
+      return m_steps[m_currentStep >= m_totalSteps - 1 ? 0 : m_currentStep + 1];
+    }
 
-    public:
-      LedAnimation(uint32_t duration, const AnimationStep* steps, uint8_t totalSteps, LedState& ledState)
-      : m_duration { duration }, m_steps { steps }, m_totalSteps { totalSteps }, m_ledState { ledState }
-      {}
+  public:
+    LedAnimation(uint32_t duration, const AnimationStep *steps, uint8_t totalSteps, LedState &ledState)
+        : m_duration{duration}, m_steps{steps}, m_totalSteps{totalSteps}, m_ledState{ledState}
+    {
+    }
 
-      void start(uint32_t startTime) {
-        m_startTime = startTime;
+    void start(uint32_t startTime)
+    {
+      m_startTime = startTime;
+      m_currentStep = 0;
+    }
+
+    void updateLedState(uint32_t currentTime)
+    {
+      const uint32_t diffTime = (currentTime - m_startTime) % m_duration;
+      const AnimationStep &currentStep = getCurrentStep();
+      const AnimationStep &nextStep = getNextStep();
+
+      const bool isLastStep = m_currentStep == m_totalSteps - 1;
+
+      // Starting the next iteration cycle
+      if (diffTime < m_previousDiffTime)
+      {
         m_currentStep = 0;
+        m_ledState.brightness = m_steps[0].brightness;
+        m_previousDiffTime = 0;
+        return;
       }
 
-      void updateLedState(uint32_t currentTime) {
-        const uint32_t diffTime = (currentTime - m_startTime) % m_duration;
-        const AnimationStep& currentStep = getCurrentStep();
-        const AnimationStep& nextStep = getNextStep();
+      m_previousDiffTime = diffTime;
 
-        const bool isLastStep = m_currentStep == m_totalSteps - 1;
-
-        // Starting the next iteration cycle
-        if (diffTime < m_previousDiffTime) {
-          m_currentStep = 0;
-          m_ledState.brightness = m_steps[0].brightness;
-          m_previousDiffTime = 0;
-          return;
-        }
-
-        m_previousDiffTime = diffTime;
-        
-        // Moving to the next animation step
-        if (diffTime >= nextStep.timestamp && !isLastStep) {
-          m_currentStep = (m_currentStep + 1) % m_totalSteps;
-          m_ledState.brightness = nextStep.brightness;
-          return;
-        }
-
-        if (nextStep.timestamp == currentStep.timestamp) return;
-
-        // Calculating new brightness with smooth transition
-        if (currentStep.transition) {
-          const int16_t brightnessDiff = (int16_t)nextStep.brightness - (int16_t)currentStep.brightness;
-          const uint32_t stepDuration = (isLastStep ? m_duration : nextStep.timestamp) - currentStep.timestamp;
-          const uint32_t timePassed = diffTime - currentStep.timestamp;
-          
-          const uint8_t newBrightness = currentStep.brightness + (brightnessDiff * (int32_t)timePassed) / (int32_t)stepDuration;
-          m_ledState.isOn = true;
-          m_ledState.brightness = newBrightness;
-        }
+      // Moving to the next animation step
+      if (diffTime >= nextStep.timestamp && !isLastStep)
+      {
+        m_currentStep = (m_currentStep + 1) % m_totalSteps;
+        m_ledState.brightness = nextStep.brightness;
+        return;
       }
-    
+
+      if (nextStep.timestamp == currentStep.timestamp)
+        return;
+
+      // Calculating new brightness with smooth transition
+      if (currentStep.transition)
+      {
+        const int16_t brightnessDiff = (int16_t)nextStep.brightness - (int16_t)currentStep.brightness;
+        const uint32_t stepDuration = (isLastStep ? m_duration : nextStep.timestamp) - currentStep.timestamp;
+        const uint32_t timePassed = diffTime - currentStep.timestamp;
+
+        const uint8_t newBrightness = currentStep.brightness + (brightnessDiff * (int32_t)timePassed) / (int32_t)stepDuration;
+        m_ledState.isOn = true;
+        m_ledState.brightness = newBrightness;
+      }
+    }
   };
 
-  constexpr uint32_t animationDuration { 1000 };
+  constexpr uint32_t animationDuration{1000};
 
-  const AnimationStep led1AnimationPattern[] {
-    { 0, 0, false },
-    { 100, 255, false },
-    { 200, 100, true },
-    { 300, 0, false },
-    { 900, 255, false },
+  const AnimationStep led1AnimationPattern[]{
+      {0, 0, false},
+      {100, 255, false},
+      {200, 100, true},
+      {300, 0, false},
+      {900, 255, false},
   };
-  const AnimationStep led2AnimationPattern[] {
-    { 0, 0, false },
-    { 200, 255, false },
-    { 300, 100, true },
-    { 400, 0, false },
-    { 800, 255, false },
-    { 900, 100, true },
+  const AnimationStep led2AnimationPattern[]{
+      {0, 0, false},
+      {200, 255, false},
+      {300, 100, true},
+      {400, 0, false},
+      {800, 255, false},
+      {900, 100, true},
   };
-  const AnimationStep led3AnimationPattern[] {
-    { 0, 0, false },
-    { 300, 255, false },
-    { 400, 100, true },
-    { 500, 0, false },
-    { 700, 255, false },
-    { 800, 100, true },
-    { 900, 0, false },
+  const AnimationStep led3AnimationPattern[]{
+      {0, 0, false},
+      {300, 255, false},
+      {400, 100, true},
+      {500, 0, false},
+      {700, 255, false},
+      {800, 100, true},
+      {900, 0, false},
   };
-  const AnimationStep led4AnimationPattern[] {
-    { 0, 0, false },
-    { 400, 255, false },
-    { 500, 100, true },
-    { 599, 0, false },
-    { 600, 255, false },
-    { 700, 100, true },
-    { 800, 0, false },
+  const AnimationStep led4AnimationPattern[]{
+      {0, 0, false},
+      {400, 255, false},
+      {500, 100, true},
+      {599, 0, false},
+      {600, 255, false},
+      {700, 100, true},
+      {800, 0, false},
   };
-  const AnimationStep led5AnimationPattern[] {
-    { 0, 0, false },
-    { 500, 255, false },
-    { 600, 100, true },
-    { 700, 0, false },
+  const AnimationStep led5AnimationPattern[]{
+      {0, 0, false},
+      {500, 255, false},
+      {600, 100, true},
+      {700, 0, false},
   };
 
   LedAnimation led1Animation(animationDuration, led1AnimationPattern, arraySize(led1AnimationPattern), green[0]);
@@ -181,40 +195,48 @@ namespace UserData
   LedAnimation led4Animation(animationDuration, led4AnimationPattern, arraySize(led4AnimationPattern), green[3]);
   LedAnimation led5Animation(animationDuration, led5AnimationPattern, arraySize(led5AnimationPattern), green[4]);
 
-  sourceMode currentSourceMode { sourceMode::pot };
-  showMode currentShowMode { showMode::level };
+  sourceMode currentSourceMode{sourceMode::pot};
+  showMode currentShowMode{showMode::level};
 
-  uint32_t smoothingBuffer[3] {};
-  constexpr uint8_t bufferSize { 3 };
-  uint8_t bufferElementCount { 0 };
-  uint8_t currentBufferIndex { 0 };
+  uint32_t smoothingBuffer[3]{};
+  constexpr uint8_t bufferSize{3};
+  uint8_t bufferElementCount{0};
+  uint8_t currentBufferIndex{0};
 
-  void nextIndex() {
+  void nextIndex()
+  {
     currentBufferIndex = (currentBufferIndex + 1) % bufferSize;
   }
 
-  void addValueToBuffer(uint32_t value) {
+  void addValueToBuffer(uint32_t value)
+  {
     smoothingBuffer[currentBufferIndex] = value;
     nextIndex();
-    if (bufferElementCount < 3) {
+    if (bufferElementCount < 3)
+    {
       bufferElementCount++;
     }
   }
 
-  bool checkIfBufferFull() {
+  bool checkIfBufferFull()
+  {
     return bufferElementCount == bufferSize;
   }
 
-  void resetBuffer() {
+  void resetBuffer()
+  {
     bufferElementCount = 0;
   }
 
-  uint32_t getSmoothedValue() {
-    if (!checkIfBufferFull()) return 0;
+  uint32_t getSmoothedValue()
+  {
+    if (!checkIfBufferFull())
+      return 0;
 
-    uint32_t sum { 0 };
+    uint32_t sum{0};
 
-    for (uint8_t i { 0 }; i < bufferSize; ++i) {
+    for (uint8_t i{0}; i < bufferSize; ++i)
+    {
       sum += smoothingBuffer[i];
     }
 
@@ -222,53 +244,69 @@ namespace UserData
   }
 
   constexpr uint8_t NO_LEVEL = 255;
-  uint8_t previousLevel { NO_LEVEL };
+  uint8_t previousLevel{NO_LEVEL};
 
-  void switchSourceMode() {
-    switch (currentSourceMode) {
-      case sourceMode::ldr: {
-        currentSourceMode = sourceMode::pot;
-        blue[0] = { true, 255 };
-        blue[1] = { false, 255 };
-      } break;
-      case sourceMode::pot: {
-        currentSourceMode = sourceMode::ldr;
-        blue[0] = { false, 255 };
-        blue[1] = { true, 255 };
-      } break;
+  void switchSourceMode()
+  {
+    switch (currentSourceMode)
+    {
+    case sourceMode::ldr:
+    {
+      currentSourceMode = sourceMode::pot;
+      blue[0] = {true, 255};
+      blue[1] = {false, 255};
     }
-    if (currentShowMode == showMode::animation) {
+    break;
+    case sourceMode::pot:
+    {
+      currentSourceMode = sourceMode::ldr;
+      blue[0] = {false, 255};
+      blue[1] = {true, 255};
+    }
+    break;
+    }
+    if (currentShowMode == showMode::animation)
+    {
       currentShowMode = showMode::level;
     }
     resetBuffer();
     previousLevel = NO_LEVEL;
   }
 
-  void switchShowMode() {
-    switch (currentShowMode) {
-      case showMode::level: {
-        currentShowMode = showMode::brightness;
-      } break;
-      case showMode::brightness: {
-        currentShowMode = showMode::level;
-      } break;
-      case showMode::animation: {
-        currentShowMode = showMode::level;
-        currentSourceMode = sourceMode::pot;
-        blue[0] = { true, 255 };
-        blue[1] = { false, 255 };
-      } break;
+  void switchShowMode()
+  {
+    switch (currentShowMode)
+    {
+    case showMode::level:
+    {
+      currentShowMode = showMode::brightness;
+    }
+    break;
+    case showMode::brightness:
+    {
+      currentShowMode = showMode::level;
+    }
+    break;
+    case showMode::animation:
+    {
+      currentShowMode = showMode::level;
+      currentSourceMode = sourceMode::pot;
+      blue[0] = {true, 255};
+      blue[1] = {false, 255};
+    }
+    break;
     }
     resetBuffer();
     previousLevel = NO_LEVEL;
   }
 
-  uint32_t startAnimationTime { 0 };
+  uint32_t startAnimationTime{0};
 
-  void switchToAnimation() {
+  void switchToAnimation()
+  {
     currentShowMode = showMode::animation;
-    blue[0] = { true, 255 };
-    blue[1] = { true, 255 };
+    blue[0] = {true, 255};
+    blue[1] = {true, 255};
     startAnimationTime = millis();
     led1Animation.start(startAnimationTime);
     led2Animation.start(startAnimationTime);
@@ -278,21 +316,24 @@ namespace UserData
     resetBuffer();
   }
 
-  bool isSourceModeButtonPressed { false };
-  uint32_t sourceModeButtonPressTime { 0 };
-  uint32_t sourceModeButtonReleaseTime { 0 };
-  bool isShowModeButtonPressed { false };
-  uint32_t showModeButtonPressTime { 0 };
-  uint32_t showModeButtonReleaseTime { 0 };
-  uint32_t showAnimationTime { 0 };
+  bool isSourceModeButtonPressed{false};
+  uint32_t sourceModeButtonPressTime{0};
+  uint32_t sourceModeButtonReleaseTime{0};
+  bool isShowModeButtonPressed{false};
+  uint32_t showModeButtonPressTime{0};
+  uint32_t showModeButtonReleaseTime{0};
+  uint32_t showAnimationTime{0};
 }
 
-void onSourceModeButtonPress() {
-  if (UserData::isSourceModeButtonPressed) return;
+void onSourceModeButtonPress()
+{
+  if (UserData::isSourceModeButtonPressed)
+    return;
 
   const uint32_t now = millis();
 
-  if (UserData::isShowModeButtonPressed) {
+  if (UserData::isShowModeButtonPressed)
+  {
     UserData::switchToAnimation();
     UserData::isSourceModeButtonPressed = true;
     UserData::sourceModeButtonPressTime = now;
@@ -300,26 +341,30 @@ void onSourceModeButtonPress() {
     return;
   }
 
-  
-  if ((now - UserData::sourceModeButtonReleaseTime) < DEBOUNCE) return;
+  if ((now - UserData::sourceModeButtonReleaseTime) < DEBOUNCE)
+    return;
 
   UserData::isSourceModeButtonPressed = true;
   UserData::sourceModeButtonPressTime = now;
 }
 
-void onSourceModeButtonRelease() {
-  if (!UserData::isSourceModeButtonPressed) return;
+void onSourceModeButtonRelease()
+{
+  if (!UserData::isSourceModeButtonPressed)
+    return;
 
   const uint32_t now = millis();
 
-  if ((now - UserData::sourceModeButtonReleaseTime) < DEBOUNCE) return;
+  if ((now - UserData::sourceModeButtonReleaseTime) < DEBOUNCE)
+    return;
 
-  if ((now - UserData::sourceModeButtonPressTime) < DEBOUNCE) return;
+  if ((now - UserData::sourceModeButtonPressTime) < DEBOUNCE)
+    return;
 
   if (
-    UserData::showAnimationTime < UserData::sourceModeButtonPressTime &&
-    UserData::isShowModeButtonPressed == false
-  ) {
+      UserData::showAnimationTime < UserData::sourceModeButtonPressTime &&
+      UserData::isShowModeButtonPressed == false)
+  {
     UserData::switchSourceMode();
   }
 
@@ -327,22 +372,29 @@ void onSourceModeButtonRelease() {
   UserData::isSourceModeButtonPressed = false;
 }
 
-void IRAM_ATTR onSourceModeButtonChange() {
+void IRAM_ATTR onSourceModeButtonChange()
+{
   const uint32_t value = digitalRead(BUTTON1_PIN);
 
-  if (value) {
+  if (value)
+  {
     onSourceModeButtonRelease();
-  } else {
+  }
+  else
+  {
     onSourceModeButtonPress();
   }
 }
 
-void onShowModeButtonPress() {
-  if (UserData::isShowModeButtonPressed) return;
+void onShowModeButtonPress()
+{
+  if (UserData::isShowModeButtonPressed)
+    return;
 
   const uint32_t now = millis();
 
-  if (UserData::isSourceModeButtonPressed) {
+  if (UserData::isSourceModeButtonPressed)
+  {
     UserData::switchToAnimation();
     UserData::isShowModeButtonPressed = true;
     UserData::showModeButtonPressTime = now;
@@ -350,26 +402,30 @@ void onShowModeButtonPress() {
     return;
   }
 
-  
-  if ((now - UserData::showModeButtonReleaseTime) < DEBOUNCE) return;
+  if ((now - UserData::showModeButtonReleaseTime) < DEBOUNCE)
+    return;
 
   UserData::isShowModeButtonPressed = true;
   UserData::showModeButtonPressTime = now;
 }
 
-void onShowModeButtonRelease() {
-  if (!UserData::isShowModeButtonPressed) return;
+void onShowModeButtonRelease()
+{
+  if (!UserData::isShowModeButtonPressed)
+    return;
 
   const uint32_t now = millis();
 
-  if ((now - UserData::showModeButtonReleaseTime) < DEBOUNCE) return;
+  if ((now - UserData::showModeButtonReleaseTime) < DEBOUNCE)
+    return;
 
-  if ((now - UserData::showModeButtonPressTime) < DEBOUNCE) return;
+  if ((now - UserData::showModeButtonPressTime) < DEBOUNCE)
+    return;
 
   if (
-    UserData::showAnimationTime < UserData::showModeButtonPressTime &&
-    UserData::isSourceModeButtonPressed == false
-  ) {
+      UserData::showAnimationTime < UserData::showModeButtonPressTime &&
+      UserData::isSourceModeButtonPressed == false)
+  {
     UserData::switchShowMode();
   }
 
@@ -377,20 +433,26 @@ void onShowModeButtonRelease() {
   UserData::isShowModeButtonPressed = false;
 }
 
-void IRAM_ATTR onShowModeButtonChange() {
+void IRAM_ATTR onShowModeButtonChange()
+{
   const uint32_t value = digitalRead(BUTTON2_PIN);
 
-  if (value) {
+  if (value)
+  {
     onShowModeButtonRelease();
-  } else {
+  }
+  else
+  {
     onShowModeButtonPress();
   }
 }
 
-void updateStateMachine() {
-  uint32_t value {};
+void updateStateMachine()
+{
+  uint32_t value{};
 
-  if (UserData::currentShowMode == UserData::showMode::animation) {
+  if (UserData::currentShowMode == UserData::showMode::animation)
+  {
     const uint32_t now = millis();
     UserData::led1Animation.updateLedState(now);
     UserData::led2Animation.updateLedState(now);
@@ -400,63 +462,78 @@ void updateStateMachine() {
     return;
   }
 
-  switch (UserData::currentSourceMode) {
-    case UserData::sourceMode::ldr: {
-      value = analogRead(PHOTO_PIN);
-    } break;
-    case UserData::sourceMode::pot: {
-      value = analogRead(POT_PIN);
-    } break;
+  switch (UserData::currentSourceMode)
+  {
+  case UserData::sourceMode::ldr:
+  {
+    value = analogRead(PHOTO_PIN);
+  }
+  break;
+  case UserData::sourceMode::pot:
+  {
+    value = analogRead(POT_PIN);
+  }
+  break;
   }
 
   UserData::addValueToBuffer(value);
-  if (!UserData::checkIfBufferFull()) {
+  if (!UserData::checkIfBufferFull())
+  {
     Serial.println("Buffer is not full! Exit!");
     return;
   }
 
   const uint32_t smoothedValue = UserData::getSmoothedValue();
 
-  switch (UserData::currentShowMode) {
-    case UserData::showMode::animation: {
-    } break;
-    case UserData::showMode::brightness: {
-      uint32_t brightness = map(smoothedValue <= ZERO_BRIGHTNESS_THRESHOLD ? 0 : smoothedValue, 0, 4095, 0, 255);
-      brightness = constrain(brightness, 0, 255);
-      Serial.print("new brightness: ");
-      Serial.println(brightness);
-      for (size_t i = 0; i < arraySize(UserData::green); ++i) {
-        UserData::green[i] = { true, brightness };
-      }
-      UserData::previousLevel = UserData::NO_LEVEL;
+  switch (UserData::currentShowMode)
+  {
+  case UserData::showMode::animation:
+  {
+  }
+  break;
+  case UserData::showMode::brightness:
+  {
+    uint32_t brightness = map(smoothedValue <= ZERO_BRIGHTNESS_THRESHOLD ? 0 : smoothedValue, 0, 4095, 0, 255);
+    brightness = constrain(brightness, 0, 255);
+    Serial.print("new brightness: ");
+    Serial.println(brightness);
+    for (size_t i = 0; i < arraySize(UserData::green); ++i)
+    {
+      UserData::green[i] = {true, brightness};
+    }
+    UserData::previousLevel = UserData::NO_LEVEL;
+  }
+  break;
+  case UserData::showMode::level:
+  {
+    uint32_t level = smoothedValue * (arraySize(UserData::green) + 1) / 4096;
+    Serial.print("level: ");
+    Serial.println(level);
+    if (level == UserData::previousLevel)
+      return;
 
-    } break;
-    case UserData::showMode::level: {
-      uint32_t level = smoothedValue * (arraySize(UserData::green) + 1) / 4096;
-      Serial.print("level: ");
-      Serial.println(level);
-      if (level == UserData::previousLevel) return;
-
-      if (
+    if (
         (level > UserData::previousLevel &&
-        smoothedValue > ((UserData::previousLevel + 1) * 4095) / 6 + LEVEL_THRESHOLD) ||
+         smoothedValue > ((UserData::previousLevel + 1) * 4095) / 6 + LEVEL_THRESHOLD) ||
         (level < UserData::previousLevel &&
-        smoothedValue + LEVEL_THRESHOLD < (UserData::previousLevel * 4095 / 6))
-      )
+         smoothedValue + LEVEL_THRESHOLD < (UserData::previousLevel * 4095 / 6)))
+    {
+      Serial.print("New level: ");
+      Serial.println(level);
+      for (size_t i = 0; i < arraySize(UserData::green); ++i)
       {
-        Serial.print("New level: ");
-        Serial.println(level);
-        for (size_t i = 0; i < arraySize(UserData::green); ++i) {
-          UserData::green[i] = { i < level, 255 };
-        }
-
-        UserData::previousLevel = level;
+        UserData::green[i] = {i < level, 255};
       }
-    } break;
+
+      UserData::previousLevel = level;
+    }
+  }
+  break;
   }
 }
 
-void updateGreenLeds() {
+void updateGreenLeds()
+{
   analogWrite(GREEN_LED1_PIN, UserData::green[0].isOn ? UserData::green[0].brightness : 0);
   analogWrite(GREEN_LED2_PIN, UserData::green[1].isOn ? UserData::green[1].brightness : 0);
   analogWrite(GREEN_LED3_PIN, UserData::green[2].isOn ? UserData::green[2].brightness : 0);
@@ -464,12 +541,14 @@ void updateGreenLeds() {
   analogWrite(GREEN_LED5_PIN, UserData::green[4].isOn ? UserData::green[4].brightness : 0);
 }
 
-void updateBlueLeds() {
+void updateBlueLeds()
+{
   analogWrite(BLUE_LED1_PIN, UserData::blue[0].isOn ? 20 : 0);
   analogWrite(BLUE_LED2_PIN, UserData::blue[1].isOn ? 20 : 0);
 }
 
-void setup() {
+void setup()
+{
   Serial.begin(115200);
   Serial.println("== setup ==");
 
@@ -480,7 +559,8 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(BUTTON2_PIN), onShowModeButtonChange, CHANGE);
 }
 
-void loop() {
+void loop()
+{
   updateStateMachine();
   updateGreenLeds();
   updateBlueLeds();
